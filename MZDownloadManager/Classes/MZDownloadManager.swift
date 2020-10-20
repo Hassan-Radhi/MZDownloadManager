@@ -120,7 +120,7 @@ extension MZDownloadManager {
         let downloadTasks = self.downloadTasks()
         
         for downloadTask in downloadTasks {
-            let taskDescComponents: [String] = downloadTask.taskDescription!.components(separatedBy: ",")
+            guard let taskDescComponents: [String] = downloadTask.taskDescription?.components(separatedBy: ",") else { continue }
             let fileName = taskDescComponents[TaskDescFileNameIndex]
             let fileURL = taskDescComponents[TaskDescFileURLIndex]
             let destinationPath = taskDescComponents[TaskDescFileDestinationIndex]
@@ -134,9 +134,6 @@ extension MZDownloadManager {
                 downloadingArray.append(downloadModel)
             } else if(downloadTask.state == .suspended) {
                 downloadModel.status = TaskStatus.paused.description()
-                downloadingArray.append(downloadModel)
-            } else if(downloadTask.state == .completed) {
-                downloadModel.status = TaskStatus.downloading.description()
                 downloadingArray.append(downloadModel)
             } else {
                 downloadModel.status = TaskStatus.failed.description()
@@ -164,7 +161,7 @@ extension MZDownloadManager: URLSessionDownloadDelegate {
                     guard let self = self else { return }
                     
                     let taskStartedDate = downloadModel.startTime ?? Date()
-                    let timeInterval = taskStartedDate.timeIntervalSinceNow
+                    let timeInterval = taskStartedDate.timeIntervalSinceNow == 0 ? 1 : taskStartedDate.timeIntervalSinceNow
                     let downloadTime = TimeInterval(-1 * timeInterval)
                     
                     let receivedBytesCount = Double(downloadTask.countOfBytesReceived)
