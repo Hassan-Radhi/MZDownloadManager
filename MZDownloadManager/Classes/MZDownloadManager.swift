@@ -135,6 +135,9 @@ extension MZDownloadManager {
             } else if(downloadTask.state == .suspended) {
                 downloadModel.status = TaskStatus.paused.description()
                 downloadingArray.append(downloadModel)
+            } else if(downloadTask.state == .completed) {
+                downloadModel.status = TaskStatus.downloading.description()
+                downloadingArray.append(downloadModel)
             } else {
                 downloadModel.status = TaskStatus.failed.description()
             }
@@ -157,21 +160,24 @@ extension MZDownloadManager: URLSessionDownloadDelegate {
     public func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
         for (index, downloadModel) in self.downloadingArray.enumerated() {
             if downloadTask.isEqual(downloadModel.task) {
-                DispatchQueue.main.async(execute: { () -> Void in
-                    
-                    let receivedBytesCount = Double(downloadTask.countOfBytesReceived)
-                    let totalBytesCount = Double(downloadTask.countOfBytesExpectedToReceive)
-                    let progress = Float(receivedBytesCount / totalBytesCount)
+                DispatchQueue.main.async(execute: { [weak self] () -> Void in
+                    guard let self = self else { return }
                     
                     let taskStartedDate = downloadModel.startTime ?? Date()
                     let timeInterval = taskStartedDate.timeIntervalSinceNow
                     let downloadTime = TimeInterval(-1 * timeInterval)
                     
-                    let speed = Float(totalBytesWritten) / Float(downloadTime)
+                    let receivedBytesCount = Double(downloadTask.countOfBytesReceived)
+                    let totalBytesCount = Double(downloadTask.countOfBytesExpectedToReceive)
+                    guard totalBytesWritten != 0 && downloadTime != 0 else { return }
+                    
+                    let progress = Float(receivedBytesCount / totalBytesCount)
+                    let speedFloat = Float(totalBytesWritten) / Float(downloadTime)
+                    let speed = max(1, Int64(speedFloat))
                     
                     let remainingContentLength = totalBytesExpectedToWrite - totalBytesWritten
                     
-                    let remainingTime = remainingContentLength / Int64(speed)
+                    let remainingTime = remainingContentLength / speed
                     let hours = Int(remainingTime) / 3600
                     let minutes = (Int(remainingTime) - hours * 3600) / 60
                     let seconds = Int(remainingTime) - hours * 3600 - minutes * 60
@@ -182,8 +188,8 @@ extension MZDownloadManager: URLSessionDownloadDelegate {
                     let downloadedFileSize = MZUtility.calculateFileSizeInUnit(totalBytesWritten)
                     let downloadedSizeUnit = MZUtility.calculateUnit(totalBytesWritten)
                     
-                    let speedSize = MZUtility.calculateFileSizeInUnit(Int64(speed))
-                    let speedUnit = MZUtility.calculateUnit(Int64(speed))
+                    let speedSize = MZUtility.calculateFileSizeInUnit(speed)
+                    let speedUnit = MZUtility.calculateUnit(speed)
                     
                     downloadModel.remainingTime = (hours, minutes, seconds)
                     downloadModel.file = (totalFileSize, totalFileSizeUnit as String)
@@ -220,8 +226,8 @@ extension MZDownloadManager: URLSessionDownloadDelegate {
                         try fileManager.moveItem(at: location, to: fileURL)
                     } catch let error as NSError {
                         debugPrint("Error while moving downloaded file to destination path:\(error)")
-                        DispatchQueue.main.async(execute: { () -> Void in
-                            self.delegate?.downloadRequestDidFailedWithError?(error, downloadModel: downloadModel, index: index)
+                        DispatchQueue.main.async(execute: { [weak self] () -> Void in
+                            self?.delegate?.downloadRequestDidFailedWithError?(error, downloadModel: downloadModel, index: index)
                         })
                     }
                 } else {
@@ -247,7 +253,8 @@ extension MZDownloadManager: URLSessionDownloadDelegate {
         debugPrint("task id: \(task.taskIdentifier)")
         /***** Any interrupted tasks due to any reason will be populated in failed state after init *****/
         
-        DispatchQueue.main.async {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
             
             let err = error as NSError?
             
